@@ -1,0 +1,206 @@
+#Enable matplotlib to display in jupyter notebook & import it
+%matplotlib inline
+
+import matplotlib.pyplot as plt
+import plotly.plotly as py
+import plotly.graph_objs as go
+import pandas as pd
+import numpy as np
+import re
+from geopy.geocoders import Nominatim #used in filling missing zipcodes
+
+
+#Import
+os.chdir('/Users/robo/Google_Drive/MIDS_Python_Project_2')
+listings_original = pd.read_csv('data/listings.csv', usecols = ['id', 'host_since', 'host_total_listings_count', 'summary',\
+'host_verifications', 'host_response_rate', 'host_acceptance_rate', 'neighbourhood_cleansed', 'city', 'state', 'zipcode', 'latitude', 'longitude', 'property_type', \
+'room_type', 'accommodates', 'bathrooms', 'bedrooms', 'beds', 'amenities', 'price', 'weekly_price', 'monthly_price', \
+'cleaning_fee', 'guests_included', 'minimum_nights', 'number_of_reviews', 'first_review', 'last_review', \
+'review_scores_rating', 'review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', \
+'review_scores_communication', 'review_scores_location', 'review_scores_value', 'instant_bookable', \
+'cancellation_policy', 'reviews_per_month'])
+calendar_oiginal = pd.read_csv('data/calendar.csv')
+reviews_original = pd.read_csv('data/reviews.csv')
+
+listings = listings_original.copy()
+calendar = calendar_oiginal.copy()
+reviews = reviews_original.copy()
+
+#Cleaning
+listings.host_since = pd.to_datetime(listings.host_since)
+listings.first_review = pd.to_datetime(listings.first_review)
+listings.last_review = pd.to_datetime(listings.last_review)
+
+listings.price = listings.price.replace('[^0-9.]+','',regex=True).astype(float)
+listings.weekly_price = listings.weekly_price.replace('[^0-9.]+','',regex=True).astype(float)
+listings.monthly_price = listings.monthly_price.replace('[^0-9.]+','',regex=True).astype(float)
+listings.cleaning_fee = listings.cleaning_fee.replace('[^0-9.]+','',regex=True).astype(float)
+listings.cleaning_fee.fillna(0, inplace = True)
+listings.cleaning_fee_perc = listings.cleaning_fee / listings.price
+
+def latlonToZip(lat, lon):
+    geolocator = Nominatim()
+    try:
+        location = geolocator.reverse(str(lat)+','+str(lon))
+        z = re.compile('(\s)([0-9]{5})(,\sUnited)')
+        #print(z.findall(location[0])[0][1])
+        return z.findall(location[0])[0][1]
+    except:
+        print(str(lat)+','+str(lon),'-----',location)
+        return np.nan
+    
+    print(str(lat)+','+str(lon),'-----',location)
+    return np.nan
+    
+temp = listings[listings.zipcode.isnull()].copy()
+listings.zipcode.update(temp.apply(lambda x: latlonToZip(x['latitude'], x['longitude']), axis=1))
+listings.zipcode = listings.zipcode.apply(lambda x: x[:5])
+
+
+#Important KPI metrics have ~20% Nas
+kpi = ['reviews_per_month', 'review_scores_rating', 'review_scores_accuracy',
+       'review_scores_cleanliness', 'review_scores_checkin',
+       'review_scores_communication', 'review_scores_location']
+
+[[x, listings[x].isnull().sum()/len(listings[x])] for x in kpi]
+
+listings['user_type'] = ""
+listings['user_type'][listings.host_total_listings_count > 2] = "Professional"
+listings['user_type'][listings.host_total_listings_count <= 2] = "Casual"
+
+#Dumify Amenities
+listings['amenities'] = listings['amenities'].map(
+    lambda amns: "|".join([amn.replace("}", "").replace("{", "").replace('"', "")\
+                           for amn in amns.split(",")]))
+                           
+amenities = np.unique(np.concatenate(listings['amenities'].map(lambda amns: amns.split("|"))))[1:]
+amenity_arr = np.array([listings['amenities'].map(lambda amns: amn in amns) for amn in amenities[0:43]])
+
+final_dummies = pd.DataFrame()
+for i in ['instant_bookable', 'cancellation_policy', 'property_type', 'room_type']:
+    df = pd.concat([listings.id, pd.get_dummies(listings[i])], axis = 1)
+    #df = df.groupby('neighbourhood_cleansed', as_index = False).sum()
+    #df['total'] = df.sum(axis=1)
+    #for i in range(1,len(df.columns)-1):
+        #df.ix[:,i] = df.ix[:,i]/df['total']
+    final_dummies = pd.concat([final_dummies, df], axis = 1)
+final_dummies = final_dummies.T.drop_duplicates().T
+final_dummies.columns = ['id', 'instant_bookable_f', 'instant_bookable_t', 'cancel_pol_flexible', 'cancel_pol_moderate',
+       'cancel_pol_strict', 'cancel_pol_super_strict_30', 'Prop_type_Apartment', 'Prop_type_Bed_&_Breakfast', 'Prop_type_Boat',
+       'Prop_type_Camper/RV', 'Prop_type_Condominium', 'Prop_type_Dorm', 'Prop_type_Entire_Floor', 'Prop_type_Guesthouse',
+       'Prop_type_House', 'Prop_type_Loft', 'Prop_type_Other', 'Prop_type_Townhouse', 'Prop_type_Villa', 
+       'Room_type_Entire_home/apt', 'Room_type_Private room', 'Room_type_Shared_room']
+       
+       
+final_dummies = final_dummies.T.drop_duplicates().T
+#final_dummies.columns = ['neighbourhood_cleansed', 'instant_bookable_f', 'instant_bookable_t', 'instant_bookable_total', 'cancel_pol_flexible', 'cancel_pol_moderate',
+       #'cancel_pol_strict', 'cancel_pol_super_strict_30', 'Prop_type_Apartment', 'Prop_type_Bed & Breakfast', 'Prop_type_Boat',
+       #'Prop_type_Camper/RV', 'Prop_type_Condominium', 'Prop_type_Dorm', 'Prop_type_Entire_Floor', 'Prop_type_Guesthouse',
+       #'Prop_type_House', 'Prop_type_Loft', 'Prop_type_Other', 'Prop_type_Townhouse', 'Prop_type_Villa', 'Prop_type_total',
+       #'Room_type_Entire home/apt', 'Room_type_Private room', 'Room_type_Shared_room']
+
+#Merged dataset with listings and dummy variables
+listingColumns = ['accommodates', 'bathrooms', 'bedrooms', 'beds', 'price', 'cleaning_fee', 'guests_included', \
+'minimum_nights', 'number_of_reviews', 'review_scores_rating', 'review_scores_accuracy', 'review_scores_cleanliness', \
+'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value', 'reviews_per_month', 'user_type']
+listings[listingColumns]
+
+amenitiesDummies = pd.DataFrame(data=amenity_arr.T, columns=amenities[0:43])
+
+features = pd.concat([listings[listingColumns], final_dummies, amenitiesDummies], axis=1)
+features.drop('id', 1, inplace = True)
+features.T.drop_duplicates().T
+features.dropna(inplace = True)
+features.ix[:, 40:83] = features.ix[:, 40:83].astype(int)
+features.columns = [i.replace(" ", "_") for i in features.columns]
+features.to_csv('features.csv')
+
+
+
+feature_3 = features.drop(features[['reviews_per_month',  'review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value']], axis = 1)
+feature_3.columns = [i.replace("/","_").replace("(", "").replace(")", "").replace("__", "_").replace("&", "_").replace("-", "_").replace("24", "TwentyFour") for i in feature_3.columns]
+
+#Multicollinearity
+import scipy
+
+x = feature_3.loc[:, 1]
+
+CorrCoef = {i: scipy.stats.pearsonr(feature_3[i], feature_3['review_scores_rating']) for i in feature_3.columns}
+
+#Scikit Learn
+import sklearn
+from sklearn.linear_model import LinearRegression
+
+lreg = LinearRegression()
+
+#for groupby
+listingColumns2 = ['neighbourhood_cleansed','accommodates', 'bathrooms', 'bedrooms', 'beds', 'price', 'cleaning_fee', \
+'number_of_reviews', 'instant_bookable', 'property_type', 'room_type', 'review_scores_rating', \
+'cancellation_policy', 'review_scores_value']
+listings[listingColumns2].columns
+
+features2 = pd.concat([listings[listingColumns2], amenitiesDummies], axis = 1)
+#features2.drop('id', 1, inplace = True)
+#features2.T.drop_duplicates().T
+features2.dropna(inplace = True)
+features2.ix[:, 14:57] = features2.ix[:, 14:57].astype(int)
+features2.price = features2.price.replace('[^0-9.]+','',regex=True).astype(float)
+features2.cleaning_fee = features2.cleaning_fee.replace('[^0-9.]+','',regex=True).astype(float)
+
+features2.columns = [i.replace(" ", "_").replace("/","_").replace("(", "").replace(")", "").replace("__", "_").replace("&", "_").replace("-", "_").replace("24", "TwentyFour") for i in features2.columns]
+#Groupby
+neighborhood_summary = features2.groupby('neighbourhood_cleansed', as_index = False).sum()
+neighborhood_summary = listings.groupby('neighbourhood_cleansed', as_index = False)['price', \
+'cleaning_fee', 'accommodates', 'bathrooms', 'bedrooms', 'beds', 'minimum_nights', \
+'guests_included', 'number_of_reviews', 'review_scores_rating', 'review_scores_accuracy', \
+'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', \
+'review_scores_location', 'review_scores_value'].mean().sort_values(['price'], ascending = False)
+
+neighborhood_summary.price_quantile = pd.qcut(neighborhood_summary['price'], 10)
+neighborhood_summary.rs_value_quantile = pd.qcut(neighborhood_summary['review_scores_value'], 10)
+neighborhood_summary.groupby('rs_value_quantile', 'neighbhood_cleansed')
+
+neighborhood_summary_2 = neighborhood_summary.merge(final_dummies, how = 'left', on='neighbourhood_cleansed')
+neighborhood_summary_2['price/person_accom'] = neighborhood_summary_2['price']/neighborhood_summary_2['accommodates']
+neighborhood_summary_2.to_csv('neighborhood_summary_2.csv')
+
+features['user_count'] = 1
+featureMean = features.groupby('user_type', as_index = False)['accommodates', 'bathrooms', 'bedrooms', 'beds', 'price',
+       'cleaning_fee', 'guests_included', 'minimum_nights',
+       'number_of_reviews', 'review_scores_rating', 'review_scores_accuracy',
+       'review_scores_cleanliness', 'review_scores_checkin',
+       'review_scores_communication', 'review_scores_location',
+       'review_scores_value'].mean()
+
+
+featureSum['instant_bookable_f'] = featureSum['instant_bookable_f']/featureSum['instant_bookable_f'].sum()
+featureSum
+temp = [featureSum.ix[:,i] for i in range(len(featureSum.columns))]
+for i in featureSum.columns:
+    featureSum[i] = featureSum[i]/featureSum[i].sum()
+
+
+featureSum = features.groupby('user_type', as_index = False)['user_count','instant_bookable_f', 'instant_bookable_t', 'cancel_pol_flexible',
+       'cancel_pol_moderate', 'cancel_pol_strict',
+       'cancel_pol_super_strict_30', 'Prop_type_Apartment',
+       'Prop_type_Bed_&_Breakfast', 'Prop_type_Boat', 'Prop_type_Camper/RV',
+       'Prop_type_Condominium', 'Prop_type_Dorm', 'Prop_type_Entire_Floor',
+       'Prop_type_Guesthouse', 'Prop_type_House', 'Prop_type_Loft',
+       'Prop_type_Other', 'Prop_type_Townhouse', 'Prop_type_Villa',
+       'Room_type_Entire_home/apt', 'Room_type_Private_room',
+       'Room_type_Shared_room', '24-Hour_Check-in', 'Air_Conditioning',
+       'Breakfast', 'Buzzer/Wireless_Intercom', 'Cable_TV',
+       'Carbon_Monoxide_Detector', 'Cat(s)', 'Dog(s)', 'Doorman', 'Dryer',
+       'Elevator_in_Building', 'Essentials', 'Family/Kid_Friendly',
+       'Fire_Extinguisher', 'First_Aid_Kit', 'Free_Parking_on_Premises',
+       'Free_Parking_on_Street', 'Gym', 'Hair_Dryer', 'Hangers', 'Heating',
+       'Hot_Tub', 'Indoor_Fireplace', 'Internet', 'Iron', 'Kitchen',
+       'Laptop_Friendly_Workspace', 'Lock_on_Bedroom_Door', 'Other_pet(s)',
+       'Paid_Parking_Off_Premises', 'Pets_Allowed',
+       'Pets_live_on_this_property', 'Pool', 'Safety_Card', 'Shampoo',
+       'Smoke_Detector', 'Smoking_Allowed', 'Suitable_for_Events', 'TV',
+       'Washer', 'Washer_/_Dryer', 'Wheelchair_Accessible',
+       'Wireless_Internet'].sum()
+       
+user_summary = pd.concat([featureMean,featureSum], axis = 1)
+user_summary.T.to_csv("user_summary.csv")

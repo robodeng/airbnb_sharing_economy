@@ -1,0 +1,40 @@
+TO DO:
+
+-) Impute weekend values into weekend spots
+-) calculate estimated cleaning fees based on listing -->listings table cleaning_fee
+	ISNULL == True values are assumed to NOT have a cleaning fee??? Is this reasonable assumption?
+
+-) listings['host_response_rate'], listings['host_acceptance_rate']->clean by str.replace('%','')
+
+-) Convert listings['host_is_superhost']
+
+-) Write a for loop to clean code vs this way I am doing now....
+-) Clean listings['extra_people']: DONE
+	-Place this in appropriate section of Jup Notebook
+
+
+DUMMY VARIABLES
+-) listings['property_type'] into dummy variable 
+-) listings['bed_type'] into dummy variable
+-) listings['mainzip'] into dummy variable or possibly neighborhood
+
+QUESTION: Hosting Agencies in this group
+
+How is success measured?
+Reviews/month? problem- what about people that rent consistently for longer periods of time
+number_of_reviews? same issue- people might rent for long time
+Proxy metric- HYPOTHESIS: people who...(have many properties, high reviews, high # of reviews per month,)
+Reviews_per_month (by listing), host_properties (by host)
+ASSUMPTION: "Super hosts w/5 or more properties" are available throughout calendar data set
+
+
+
+
+
+WE REALIZED THAT CAN'T BACK INTO REVENUE!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+First part of analysis:
+-How is success measured in data set?
+SECOND PART:
+-Features VS.  

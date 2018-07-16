@@ -1,0 +1,64 @@
+import statsmodels.formula.api as smf
+
+def forward_selected(data, response):
+    """Linear model designed by forward selection.
+
+    Parameters:
+    -----------
+    data : pandas DataFrame with all possible predictors and response
+
+    response: string, name of response column in data
+
+    Returns:
+    --------
+    model: an "optimal" fitted statsmodels linear model
+           with an intercept
+           selected by forward selection
+           evaluated by adjusted R-squared
+    """
+    remaining = set(data.columns)
+    remaining.remove(response)
+    selected = []
+    current_score, best_new_score = 0.0, 0.0
+    while remaining and current_score == best_new_score:
+        scores_with_candidates = []
+        for candidate in remaining:
+            formula = "{} ~ {} + 1".format(response,
+                                           ' + '.join(selected + [candidate]))
+            score = smf.ols(formula, data).fit().rsquared_adj
+            scores_with_candidates.append((score, candidate))
+        scores_with_candidates.sort()
+        best_new_score, best_candidate = scores_with_candidates.pop()
+        if current_score < best_new_score:
+            remaining.remove(best_candidate)
+            selected.append(best_candidate)
+            current_score = best_new_score
+    formula = "{} ~ {} + 1".format(response,
+                                   ' + '.join(selected))
+    model = smf.ols(formula, data).fit()
+    return model
+
+listingColumns2 = ['neighbourhood_cleansed','accommodates', 'bathrooms', 'bedrooms', 'beds', 'price', 'cleaning_fee', \
+'number_of_reviews', 'instant_bookable', 'property_type', 'room_type', 'review_scores_rating', \
+'cancellation_policy', 'review_scores_value']
+
+features2 = pd.concat([listings[listingColumns2], amenitiesDummies], axis = 1)
+#features2.drop('id', 1, inplace = True)
+#features2.T.drop_duplicates().T
+features2.dropna(inplace = True)
+features2.ix[:, 14:57] = features2.ix[:, 14:57].astype(int)
+features2.price = features2.price.replace('[^0-9.]+','',regex=True).astype(float)
+features2.cleaning_fee = features2.cleaning_fee.replace('[^0-9.]+','',regex=True).astype(float)
+features2.columns = [i.replace(" ", "_").replace("/","_").replace("(", "").replace(")", "").replace("__", "_").replace("&", "_").replace("-", "_").replace("24", "TwentyFour") for i in features2.columns]
+
+
+model = forward_selected(features2, 'review_scores_rating')
+print(model.model.formula)
+print(model.rsquared_adj)
+
+results = smf.ols('review_scores_rating ~ review_scores_value + price + Pets_live_on_this_property + accommodates + Wireless_Internet + Kitchen + cleaning_fee + instant_bookable + Doorman + bathrooms + neighbourhood_cleansed + cancellation_policy + room_type + 1', data=features2).fit()
+
+results.summary().to_csv('review_score_regression_results.csv')
+
+
+
